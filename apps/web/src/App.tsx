@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
+import "./App.css";
 
 interface Task {
   id: number;
@@ -30,20 +31,53 @@ export function App() {
     setTitle("");
   }
 
+  async function toggleTask(id: number) {
+    const res = await fetch(`/api/tasks/${id}/toggle`, { method: "PATCH" });
+    if (!res.ok) return;
+    const updated: Task = await res.json();
+    setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+  }
+
+  async function deleteTask(id: number) {
+    const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    setTasks((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  const remaining = tasks.filter((t) => !t.done).length;
+
   return (
-    <main style={{ fontFamily: "system-ui", maxWidth: 480, margin: "2rem auto" }}>
-      <h1>Tasks</h1>
-      <form onSubmit={addTask}>
+    <main className="app">
+      <header>
+        <h1>Tasks</h1>
+        <p className="count">
+          {tasks.length === 0 ? "Nothing yet" : `${remaining} of ${tasks.length} remaining`}
+        </p>
+      </header>
+      <form className="add" onSubmit={addTask}>
         <input
           aria-label="New task"
+          placeholder="What needs doing?"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
         <button type="submit">Add</button>
       </form>
-      <ul>
+      <ul className="tasks">
         {tasks.map((t) => (
-          <li key={t.id}>{t.done ? <s>{t.title}</s> : t.title}</li>
+          <li key={t.id} className={t.done ? "done" : undefined}>
+            <label>
+              <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} />
+              <span>{t.title}</span>
+            </label>
+            <button
+              className="delete"
+              aria-label={`Delete ${t.title}`}
+              onClick={() => deleteTask(t.id)}
+            >
+              ×
+            </button>
+          </li>
         ))}
       </ul>
     </main>

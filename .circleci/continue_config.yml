@@ -1,0 +1,156 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@7.2.1
+
+parameters:
+  run-api:
+    type: boolean
+    default: false
+  run-web:
+    type: boolean
+    default: false
+  run-all:
+    type: boolean
+    default: false
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:22.23.5
+    resource_class: medium
+
+commands:
+  install:
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+
+jobs:
+  test:
+    parameters:
+      workspace:
+        type: string
+      parallelism:
+        type: integer
+        default: 1
+    executor: node
+    parallelism: << parameters.parallelism >>
+    steps:
+      - install
+      - run:
+          name: Typecheck
+          command: npm run typecheck -w << parameters.workspace >>
+      - run:
+          name: Run tests (split by timing across containers)
+          working_directory: << parameters.workspace >>
+          command: |
+            circleci tests glob "test/**/*.test.ts" "src/**/*.test.ts*" \
+              | circleci tests run --command="xargs npx vitest run" --split-by=timings
+      - store_test_results:
+          path: << parameters.workspace >>/reports
+
+  build-web:
+    executor: node
+    steps:
+      - install
+      - run: npm run build -w apps/web
+      - store_artifacts:
+          path: apps/web/dist
+          destination: web-dist
+
+  build-api-image:
+    parameters:
+      push:
+        type: boolean
+        default: false
+    executor: node
+    environment:
+      IMAGE: ghcr.io/rmindigo/circletestapp-api
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build image
+          command: |
+            docker build -f services/api/Dockerfile \
+              --build-arg APP_VERSION=${CIRCLE_SHA1:0:7} \
+              -t $IMAGE:${CIRCLE_SHA1:0:7} .
+      - run:
+          name: Smoke test container
+          command: |
+            docker run -d --name api $IMAGE:${CIRCLE_SHA1:0:7}
+            sleep 3
+            docker exec api wget -qO- localhost:3000/health
+      - when:
+          condition: << parameters.push >>
+          steps:
+            - run:
+                name: Push to GHCR
+                command: |
+                  echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+                  docker push $IMAGE:${CIRCLE_SHA1:0:7}
+
+  deploy:
+    parameters:
+      environment:
+        type: string
+    executor: node
+    resource_class: small
+    steps:
+      - run:
+          name: Deploy to << parameters.environment >>
+          command: |
+            # Replace with a real deploy (kubectl, helm, ECS, etc.). Credentials
+            # come from the CircleCI context attached to this job, never the repo.
+            echo "Deploying ghcr.io/rmindigo/circletestapp-api:${CIRCLE_SHA1:0:7} to << parameters.environment >>"
+            echo "DEPLOY_TARGET=${DEPLOY_TARGET:-<set in context>}"
+
+workflows:
+  api:
+    when:
+      or: [<< pipeline.parameters.run-api >>, << pipeline.parameters.run-all >>]
+    jobs:
+      - test:
+          name: api-test
+          workspace: services/api
+          parallelism: 2
+      - build-api-image:
+          name: api-image
+          requires: [api-test]
+          filters:
+            branches:
+              ignore: main
+      - build-api-image:
+          name: api-image-publish
+          push: true
+          context: ghcr-publish
+          requires: [api-test]
+          filters:
+            branches:
+              only: main
+      - deploy:
+          name: deploy-staging
+          environment: staging
+          context: staging
+          requires: [api-image-publish]
+      - hold-production:
+          type: approval
+          requires: [deploy-staging]
+      - deploy:
+          name: deploy-production
+          environment: production
+          context: production
+          requires: [hold-production]
+
+  web:
+    when:
+      or: [<< pipeline.parameters.run-web >>, << pipeline.parameters.run-all >>]
+    jobs:
+      - test:
+          name: web-test
+          workspace: apps/web
+      - build-web:
+          requires: [web-test]

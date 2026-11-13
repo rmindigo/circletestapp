@@ -1,0 +1,19 @@
+# Setup workflow: detect which parts of the monorepo changed, then continue
+# the pipeline with continue_config.yml and only the relevant workflows enabled.
+version: 2.1
+setup: true
+
+orbs:
+  path-filtering: circleci/path-filtering@3.0.0
+
+workflows:
+  detect-changes:
+    jobs:
+      - path-filtering/filter:
+          base-revision: main
+          config-path: .circleci/continue_config.yml
+          mapping: |
+            services/api/.*        run-api true
+            apps/web/.*            run-web true
+            package-lock.json      run-all true
+            \.circleci/.*          run-all true

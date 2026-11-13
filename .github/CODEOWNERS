@@ -1,0 +1,4 @@
+# Platform team owns CI config; service teams own their code
+/.circleci/      @rmindigo
+/services/api/   @rmindigo
+/apps/web/       @rmindigo

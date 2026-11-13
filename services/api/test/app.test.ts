@@ -23,4 +23,11 @@ describe("API", () => {
   it("returns 404 when toggling a missing task", async () => {
     await request(createApp()).patch("/api/tasks/42/toggle").expect(404);
   });
+
+  it("deletes tasks", async () => {
+    const app = createApp();
+    await request(app).post("/api/tasks").send({ title: "Temp" }).expect(201);
+    await request(app).delete("/api/tasks/1").expect(204);
+    await request(app).delete("/api/tasks/1").expect(404);
+  });
 });

@@ -23,4 +23,10 @@ export class TaskStore {
     if (task) task.done = !task.done;
     return task;
   }
+
+  remove(id: number): boolean {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter((t) => t.id !== id);
+    return this.tasks.length < before;
+  }
 }

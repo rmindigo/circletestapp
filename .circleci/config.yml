@@ -15,5 +15,6 @@ workflows:
           mapping: |
             services/api/.*        run-api true
             apps/web/.*            run-web true
+            e2e/.*                 run-e2e true
             package-lock.json      run-all true
             \.circleci/.*          run-all true

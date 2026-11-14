@@ -1,0 +1,49 @@
+# Rollback pipeline. CircleCI runs this when release validation fails and
+# auto-rollback is on, or when someone clicks Rollback in the Deploys UI.
+# It receives the release details as pipeline.deploy.* values.
+version: 2.1
+
+jobs:
+  rollback:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    environment:
+      COMPONENT: << pipeline.deploy.component_name >>
+      ENVIRONMENT: << pipeline.deploy.environment_name >>
+      TARGET_VERSION: << pipeline.deploy.target_version >>
+      CURRENT_VERSION: << pipeline.deploy.current_version >>
+      NAMESPACE: << pipeline.deploy.namespace >>
+      REASON: << pipeline.deploy.reason >>
+    steps:
+      - run:
+          name: Plan rollback
+          command: |
+            echo "Rolling back $COMPONENT in $ENVIRONMENT: $CURRENT_VERSION -> $TARGET_VERSION"
+            echo "Reason: $REASON"
+            circleci run release plan rollback \
+              --environment-name="$ENVIRONMENT" \
+              --component-name="$COMPONENT" \
+              --namespace="$NAMESPACE" \
+              --target-version="$TARGET_VERSION" \
+              --rollback
+      - run:
+          name: Roll back
+          command: |
+            circleci run release update rollback --status=running
+            # Replace with a real rollback, e.g. helm rollback or redeploying
+            # ghcr.io/rmindigo/circletestapp-api:$TARGET_VERSION
+            echo "Redeploying ghcr.io/rmindigo/circletestapp-api:$TARGET_VERSION"
+      - run:
+          name: Mark rollback succeeded
+          command: circleci run release update rollback --status=SUCCESS
+          when: on_success
+      - run:
+          name: Mark rollback failed
+          command: circleci run release update rollback --status=FAILED
+          when: on_fail
+
+workflows:
+  rollback:
+    jobs:
+      - rollback

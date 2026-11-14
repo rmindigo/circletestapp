@@ -7,6 +7,7 @@ A small monorepo set up the way an enterprise would run it on CircleCI + GitHub.
 | `services/api` | Express + TypeScript task API, shipped as a Docker image |
 | `apps/web` | React + Vite frontend |
 | `e2e` | Playwright end-to-end tests against the built API and web app |
+| `monitoring/` | Local Prometheus + Alertmanager wired to CircleCI release validation ([guide](monitoring/README.md)) |
 | `.circleci/config.yml` | Setup workflow: path filtering decides what to build |
 | `.circleci/continue_config.yml` | The real pipelines for each part of the repo |
 
@@ -28,6 +29,7 @@ npm run test:e2e  # Playwright E2E (builds and starts both apps)
 - **E2E:** Playwright runs in full Chromium against production builds of both apps, split across 2 containers. Any API, web or e2e change triggers it. The HTML report, plus traces, screenshots and videos from failed tests, are saved as artifacts.
 - **Docker:** the API image is built and smoke-tested on every branch, and pushed to GHCR only from `main`.
 - **Deploy:** `main` deploys to staging, waits for a manual `hold-production` approval, then deploys to production.
+- **Release validation:** production deploys create release markers. `validate-production` then watches for a Prometheus `error_rate` alert for 10 minutes and auto-rolls back through `.circleci/rollback.yml`.
 - **Contexts:** `ghcr-publish`, `staging` and `production` hold the secrets, so none are in the repo.
 
 ## Required CircleCI contexts

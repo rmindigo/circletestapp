@@ -137,14 +137,48 @@ jobs:
         type: string
     executor: node
     resource_class: small
+    environment:
+      RELEASE: api-<< parameters.environment >>
     steps:
+      - run:
+          name: Plan release (deploy marker)
+          command: |
+            circleci run release plan "$RELEASE" \
+              --environment-name=<< parameters.environment >> \
+              --component-name=api \
+              --target-version=${CIRCLE_SHA1:0:7}
       - run:
           name: Deploy to << parameters.environment >>
           command: |
+            circleci run release update "$RELEASE" --status=running
             # Replace with a real deploy (kubectl, helm, ECS, etc.). Credentials
             # come from the CircleCI context attached to this job, never the repo.
             echo "Deploying ghcr.io/rmindigo/circletestapp-api:${CIRCLE_SHA1:0:7} to << parameters.environment >>"
             echo "DEPLOY_TARGET=${DEPLOY_TARGET:-<set in context>}"
+      - run:
+          name: Mark release succeeded
+          command: circleci run release update "$RELEASE" --status=SUCCESS
+          when: on_success
+      - run:
+          name: Mark release failed
+          command: circleci run release update "$RELEASE" --status=FAILED
+          when: on_fail
+
+  # Watches monitoring after the production deploy. If Alertmanager sends a
+  # firing error_rate alert for component api / env production within the
+  # window, the release fails and CircleCI runs the rollback pipeline.
+  validate-production:
+    type: release
+    plan_name: api-production
+    validation:
+      enabled: true
+      evaluation_time: 10m
+      auto_rollback_on_failure: true
+      webhooks:
+        - name: error_rate
+          provider: prometheus
+          fail_when: 'criteria == "firing"'
+          max_failures: 1
 
 workflows:
   api:
@@ -182,6 +216,8 @@ workflows:
           environment: production
           context: production
           requires: [hold-production]
+      - validate-production:
+          requires: [deploy-production]
 
   e2e:
     when:

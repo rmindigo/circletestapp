@@ -1,0 +1,53 @@
+# Local "production" for trying CircleCI release validation:
+# the API, Prometheus scraping it, Alertmanager sending alerts to CircleCI,
+# and a load generator so error-rate alerts have traffic to measure.
+name: circletestapp-monitoring
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+    environment:
+      ENABLE_FAULT_INJECTION: "true"
+    ports:
+      - "3000:3000"
+
+  loadgen:
+    image: curlimages/curl:8.23.0
+    depends_on: [api]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          curl -s -o /dev/null http://api:3000/api/tasks
+          sleep 0.2
+        done
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    depends_on: [api]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+    ports:
+      - "9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.35.0
+    environment:
+      CIRCLECI_ORG_ID: ${CIRCLECI_ORG_ID:-}
+    volumes:
+      - ./alertmanager:/etc/alertmanager/template:ro
+      - ./secrets:/etc/alertmanager/secrets:ro
+    # Alertmanager config can't read env vars, so fill in the org ID at startup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -n "$$CIRCLECI_ORG_ID" ] || echo "WARNING: CIRCLECI_ORG_ID is not set; alerts will not reach CircleCI"
+        [ -s /etc/alertmanager/secrets/circleci-webhook-token ] || echo "WARNING: secrets/circleci-webhook-token is missing"
+        sed "s/__CIRCLECI_ORG_ID__/$$CIRCLECI_ORG_ID/" /etc/alertmanager/template/alertmanager.yml > /tmp/alertmanager.yml
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
+    ports:
+      - "9093:9093"

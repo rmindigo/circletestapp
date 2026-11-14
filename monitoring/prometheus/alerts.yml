@@ -1,0 +1,17 @@
+groups:
+  - name: release-validation
+    rules:
+      # The alert name must match the webhook `name` in the CircleCI release
+      # job, and component_name/env must match the release plan.
+      - alert: error_rate
+        expr: |
+          sum(rate(http_requests_total{route!="/metrics", status=~"5.."}[1m]))
+            /
+          sum(rate(http_requests_total{route!="/metrics"}[1m]))
+            > 0.1
+        for: 30s
+        labels:
+          component_name: api
+          env: production
+        annotations:
+          summary: More than 10% of API requests are failing

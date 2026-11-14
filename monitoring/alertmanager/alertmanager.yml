@@ -1,0 +1,17 @@
+route:
+  receiver: circleci
+  # CircleCI matches on these group labels: alertname is the signal name
+  group_by: [alertname, component_name, env]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 5m
+
+receivers:
+  - name: circleci
+    webhook_configs:
+      - url: https://circleci.com/api/v3/deploy/hooks/__CIRCLECI_ORG_ID__/validate
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/circleci-webhook-token
